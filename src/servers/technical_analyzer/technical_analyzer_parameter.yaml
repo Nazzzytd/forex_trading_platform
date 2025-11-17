@@ -1,0 +1,16 @@
+bb_period: 20
+bb_std: 2.0
+ema_periods:
+- 5
+- 10
+- 20
+- 50
+- 200
+macd_fast: 12
+macd_signal: 9
+macd_slow: 26
+openai_api_key: sk-OrNRcYqZYQNK7PQ8GV0YAAujSh6ccVatS9BvbjK9pyk7zdfe
+openai_base_url: https://zjuapi.com/v1
+rsi_period: 14
+stoch_d_period: 3
+stoch_k_period: 14

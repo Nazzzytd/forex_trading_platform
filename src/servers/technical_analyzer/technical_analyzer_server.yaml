@@ -1,0 +1,7 @@
+description: 技术分析工具 - 集成多种技术指标计算和AI分析
+log_level: INFO
+name: technical_analyzer_server
+port: 8000
+server_type: technical_analyzer
+timeout: 300
+workers: 1

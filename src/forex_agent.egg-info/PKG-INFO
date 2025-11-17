@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: forex_agent
+Version: 1.0.0
+Summary: UltraRAG Framework for Forex Trading Agent
+Requires-Python: >=3.8
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: requests>=2.25.0
+Requires-Dist: pandas>=1.3.0
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
