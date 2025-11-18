@@ -25,48 +25,178 @@ provider_type: "openai-compatible"
 
 enabled: true
 
-# Connection Configuration
+# 使用正确的环境变量
 connection:
-  # Use environment variable with fallback to local Ollama
-  base_url: "${OPENAI_COMPATIBLE_BASE_URL:http://localhost:11434/v1}"
+  base_url: "https://zjuapi.com/v1"
   api_key_env: "OPENAI_COMPATIBLE_API_KEY"
 
-# Default model if agents.yaml specified
-# Example: qwen3-max
-default_model: "qwen3-max"
+# 设置实际可用的默认模型（从你的测试结果）
+default_model: "gpt-3.5-turbo"
 
-# Model Parameters Defaults
 defaults:
   temperature: 0.7
   max_tokens: 4096
 
-# Available Models (examples - adjust based on your provider model id)
+# 可用模型列表 - 只包含测试通过的模型
 models:
-  - id: "qwen3-max"
-    name: "Qwen3 Max"
-    context_length: 256000
-    description: "Qwen3 Max model"
-  
+  # ✅ 测试通过的 GPT-3.5 系列
+  - id: "gpt-3.5-turbo"
+    name: "GPT-3.5 Turbo"
+    context_length: 16385
+    description: "Most compatible GPT-3.5 model"
 
-# ============================================
-# Embedding Models Configuration
-# ============================================
-# Note: Embedding support depends on your provider
+  - id: "gpt-3.5-turbo-0125"
+    name: "GPT-3.5 Turbo 0125"
+    context_length: 16385
+    description: "GPT-3.5 Turbo January 2025"
 
-# Example: text-embedding-v4
+  # ✅ 测试通过的 GPT-4 系列
+  - id: "gpt-4"
+    name: "GPT-4"
+    context_length: 8192
+    description: "GPT-4 model"
+
+  - id: "gpt-4-turbo-2024-04-09"
+    name: "GPT-4 Turbo 2024-04-09"
+    context_length: 128000
+    description: "GPT-4 Turbo April 2024"
+
+  - id: "gpt-4.1"
+    name: "GPT-4.1"
+    context_length: 128000
+    description: "GPT-4.1 model"
+
+  - id: "gpt-4.1-2025-04-14"
+    name: "GPT-4.1 2025-04-14"
+    context_length: 128000
+    description: "GPT-4.1 April 2025"
+
+  - id: "gpt-4.1-mini"
+    name: "GPT-4.1 Mini"
+    context_length: 128000
+    description: "Lightweight GPT-4.1"
+
+  - id: "gpt-4.1-mini-2025-04-14"
+    name: "GPT-4.1 Mini 2025-04-14"
+    context_length: 128000
+    description: "GPT-4.1 Mini April 2025"
+
+  - id: "gpt-4.1-nano"
+    name: "GPT-4.1 Nano"
+    context_length: 128000
+    description: "Smallest GPT-4.1"
+
+  - id: "gpt-4.1-nano-2025-04-14"
+    name: "GPT-4.1 Nano 2025-04-14"
+    context_length: 128000
+    description: "GPT-4.1 Nano April 2025"
+
+  # ✅ 测试通过的 GPT-4o 系列
+  - id: "gpt-4o"
+    name: "GPT-4o"
+    context_length: 128000
+    description: "GPT-4o model"
+
+  - id: "gpt-4o-2024-05-13"
+    name: "GPT-4o 2024-05-13"
+    context_length: 128000
+    description: "GPT-4o May 2024"
+
+  - id: "gpt-4o-2024-08-06"
+    name: "GPT-4o 2024-08-06"
+    context_length: 128000
+    description: "GPT-4o August 2024"
+
+  - id: "gpt-4o-2024-11-20"
+    name: "GPT-4o 2024-11-20"
+    context_length: 128000
+    description: "GPT-4o November 2024"
+
+  - id: "gpt-4o-mini"
+    name: "GPT-4o Mini"
+    context_length: 128000
+    description: "Lightweight GPT-4o"
+
+  - id: "gpt-4o-mini-2024-07-18"
+    name: "GPT-4o Mini 2024-07-18"
+    context_length: 128000
+    description: "GPT-4o Mini July 2024"
+
+  # ✅ 测试通过的 GPT-5 系列
+  - id: "gpt-5"
+    name: "GPT-5"
+    context_length: 128000
+    description: "GPT-5 model"
+
+  - id: "gpt-5-2025-08-07"
+    name: "GPT-5 2025-08-07"
+    context_length: 128000
+    description: "GPT-5 August 2025"
+
+  - id: "gpt-5-chat"
+    name: "GPT-5 Chat"
+    context_length: 128000
+    description: "GPT-5 Chat model"
+
+  - id: "gpt-5-chat-2025-08-07"
+    name: "GPT-5 Chat 2025-08-07"
+    context_length: 128000
+    description: "GPT-5 Chat August 2025"
+
+  - id: "gpt-5-chat-latest"
+    name: "GPT-5 Chat Latest"
+    context_length: 128000
+    description: "Latest GPT-5 Chat"
+
+  - id: "gpt-5-mini"
+    name: "GPT-5 Mini"
+    context_length: 128000
+    description: "Lightweight GPT-5"
+
+  - id: "gpt-5-mini-2025-08-07"
+    name: "GPT-5 Mini 2025-08-07"
+    context_length: 128000
+    description: "GPT-5 Mini August 2025"
+
+  - id: "gpt-5-nano"
+    name: "GPT-5 Nano"
+    context_length: 128000
+    description: "Smallest GPT-5"
+
+  - id: "gpt-5-nano-2025-08-07"
+    name: "GPT-5 Nano 2025-08-07"
+    context_length: 128000
+    description: "GPT-5 Nano August 2025"
+
+  # ✅ 其他测试通过的模型
+  - id: "gpt-oss-120b"
+    name: "GPT OSS 120B"
+    context_length: 4096
+    description: "Open Source GPT 120B"
+
+  - id: "grok-code-fast-1"
+    name: "Grok Code Fast 1"
+    context_length: 8192
+    description: "Fast coding model"
+
+  - id: "MF-1.0"
+    name: "MF 1.0"
+    context_length: 4096
+    description: "MF 1.0 model"
+
+  - id: "o1"
+    name: "O1"
+    context_length: 128000
+    description: "O1 model"
+
+  - id: "o1-2024-12-17"
+    name: "O1 2024-12-17"
+    context_length: 128000
+    description: "O1 December 2024"
+
 embedding:
-  # Default embedding model
-  default_model: "text-embedding-v4"
-  
-  # Default parameters
-  defaults:
-    dimensions: 2048
-    encoding_format: "float"
-  
-  # Available embedding models
+  default_model: "text-embedding-3-small"
   models:
-    - id: "text-embedding-v4"
-      name: "Text Embedding V4"
-      dimensions: 2048
-      max_input: 8192
-      description: "Text Embedding V4 model"
+    - id: "text-embedding-3-small"
+      name: "Text Embedding 3 Small"
+      dimensions: 1536

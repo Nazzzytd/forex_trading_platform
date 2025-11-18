@@ -1,0 +1,7 @@
+description: 外汇数据获取工具 - 通过 Twelve Data API 获取实时和历史外汇数据
+log_level: INFO
+name: data_fetcher_server
+port: 8000
+server_type: data_fetcher
+timeout: 300
+workers: 1

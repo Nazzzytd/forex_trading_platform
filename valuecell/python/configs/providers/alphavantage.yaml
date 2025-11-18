@@ -1,0 +1,8 @@
+name: alphavantage
+enabled: true
+api_key: ${ALPHA_VANTAGE_API_KEY}
+base_url: "https://www.alphavantage.co/query"
+default_model: "forex_data"
+parameters:
+  timeout: 30
+  retry_attempts: 3

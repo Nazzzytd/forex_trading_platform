@@ -1,0 +1,22 @@
+analysis_ready_format: true
+api_key: 1f6392399138487c9d7e04054e208e17
+cache_duration: 300
+cache_enabled: true
+data_validation: true
+default_output_size: 100
+default_timeframe: 1h
+include_basic_metrics: true
+max_daily_requests: 800
+min_data_points: 10
+min_request_interval: 7.5
+supported_pairs:
+- EUR/USD
+- GBP/USD
+- USD/JPY
+- USD/CHF
+- AUD/USD
+- USD/CAD
+- NZD/USD
+- EUR/GBP
+- EUR/JPY
+- GBP/JPY

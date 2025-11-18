@@ -1,0 +1,479 @@
+# 工具定义文件 - UltraRAG 构建时读取这个文件
+name: "analyzer"
+description: "智能综合分析工具 - 整合市场数据、经济日历和技术分析，生成专业的交易决策报告，支持ReAct推理链和深度交易建议"
+version: "1.3.0"
+
+# 工具类定义
+class:
+  file: "analyzer.py"
+  name: "Analyzer"
+
+# 参数定义（UltraRAG 根据这个生成 parameter.yaml）
+parameters:
+  openai_api_key:
+    type: "string"
+    description: "OpenAI API密钥"
+    required: false
+    default: "${OPENAI_API_KEY}"
+    secret: true
+    
+  openai_base_url:
+    type: "string"
+    description: "OpenAI API基础URL"
+    required: false
+    default: "${OPENAI_BASE_URL}"
+    
+  default_model:
+    type: "string"
+    description: "默认AI模型"
+    default: "gpt-4"
+    options: ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"]
+
+# 方法定义（UltraRAG 会暴露为 API 端点）
+methods:
+  analyze_user_query:
+    description: "智能查询分析 - 分析用户自然语言查询，自动识别货币对、问题类型、分析重点和所需数据"
+    parameters:
+      user_query:
+        type: "string"
+        description: "用户自然语言查询，应包含货币对信息或可推断的交易问题"
+        required: true
+        example: "分析EUR/USD今天的技术走势和交易机会"
+
+  generate_comprehensive_analysis:
+    description: "生成综合易读分析报告 - 整合多数据源生成专业交易分析，包含深度交易建议和具体执行策略"
+    parameters:
+      market_data:
+        type: "any"
+        description: "市场数据（来自data_fetcher），支持实时数据、历史数据和日内数据格式"
+        required: true
+        example: |
+          {
+            "success": true,
+            "data_type": "realtime",
+            "currency_pair": "USD/JPY",
+            "data": {
+              "exchange_rate": 150.25,
+              "open": 150.10,
+              "high": 150.35,
+              "low": 150.05,
+              "volume": 1000,
+              "change": 0.15,
+              "percent_change": 0.10
+            }
+          }
+      economic_data:
+        type: "any"
+        description: "经济日历数据（来自economic_calendar），支持单货币对和多货币对分析格式"
+        required: true
+        example: |
+          {
+            "success": true,
+            "currency_pair": "USD/JPY",
+            "market_context": {
+              "overall_sentiment": "看涨",
+              "sentiment_score": 0.65,
+              "key_market_themes": ["通胀数据", "央行政策"],
+              "volatility_outlook": "高"
+            },
+            "economic_calendar_analysis": {
+              "events": [
+                {
+                  "event_name": "美国CPI",
+                  "event_date": "2024-01-15",
+                  "importance_level": "高",
+                  "actual_value": "3.4%",
+                  "status": "已发布"
+                }
+              ]
+            }
+          }
+      technical_data:
+        type: "any"
+        description: "技术分析数据（来自technical_analyzer），支持技术指标和交易信号两种格式"
+        required: true
+        example: |
+          {
+            "success": true,
+            "symbol": "USD/JPY",
+            "composite_signal": {
+              "recommendation": "买入",
+              "confidence": 60.0,
+              "bullish_signals": 3,
+              "bearish_signals": 1
+            },
+            "rsi": {"value": 65.2, "signal": "偏多"},
+            "macd": {"signal": "买入", "crossover_type": "金叉"},
+            "price": 150.25
+          }
+      user_query:
+        type: "string"
+        description: "用户查询问题，用于上下文分析和重点确定"
+        default: "分析外汇走势"
+        example: "分析USD/JPY未来一周的走势和交易机会"
+      query_analysis:
+        type: "any"
+        description: "预先进行的查询分析结果（可选），来自analyze_user_query的输出"
+        required: false
+        example: |
+          {
+            "identified_currency_pairs": ["USD/JPY"],
+            "primary_currency_pair": "USD/JPY",
+            "query_type": "技术分析",
+            "user_concerns": ["今日走势", "交易机会"],
+            "analysis_focus": ["技术指标", "价格行为"]
+          }
+
+  react_reasoning:
+    description: "ReAct初始推理 - 分析问题并制定调查计划，自动识别目标货币对，确定需要的数据类型和收集顺序"
+    parameters:
+      question:
+        type: "string"
+        description: "需要分析的复杂问题，应包含货币对信息或可推断的货币对"
+        required: true
+        example: "为什么今天USD/JPY大涨？"
+      available_tools:
+        type: "array"
+        description: "可用的工具列表"
+        required: false
+        default: ["data_fetcher", "technical_analyzer", "economic_calendar"]
+        example: ["data_fetcher", "technical_analyzer", "economic_calendar"]
+      context:
+        type: "string"
+        description: "分析上下文信息"
+        required: false
+        default: "分析外汇汇率变动原因"
+        example: "需要综合分析经济数据、新闻事件和技术面因素"
+
+  evaluate_evidence:
+    description: "ReAct中期推理 - 评估已收集证据的完整性，判断是否需要更多数据，提供下一步行动建议"
+    parameters:
+      question:
+        type: "string"
+        description: "原始问题"
+        required: true
+        example: "为什么今天USD/JPY大涨？"
+      current_findings:
+        type: "any"
+        description: "当前推理计划和发现，通常来自react_reasoning的输出"
+        required: true
+        example: |
+          {
+            "success": true,
+            "reasoning_plan": {
+              "target_currency_pair": "USD/JPY",
+              "need_economic_data": true,
+              "need_technical_analysis": true,
+              "investigation_steps": ["获取经济数据", "分析价格走势"]
+            }
+          }
+      collected_data:
+        type: "any"
+        description: "已收集的数据，包含各种数据源的输出"
+        required: false
+        example: |
+          {
+            "economic_data": {...},
+            "market_data": {...},
+            "technical_data": {...}
+          }
+
+  react_final_analysis:
+    description: "ReAct最终分析 - 基于完整推理过程和数据生成最终答案，提供数据支持的结论和建议"
+    parameters:
+      question:
+        type: "string"
+        description: "原始问题"
+        required: true
+        example: "为什么今天USD/JPY大涨？"
+      reasoning_steps:
+        type: "any"
+        description: "完整的推理步骤记录，包含初始计划、中期评估等"
+        required: true
+        example: |
+          {
+            "initial_plan": {...},
+            "mid_evaluation": {...},
+            "data_collection_summary": {...}
+          }
+      all_collected_data:
+        type: "any"
+        description: "所有收集的数据，包含完整的数据源输出"
+        required: true
+        example: |
+          {
+            "economic_data": {...},
+            "market_data": {...},
+            "technical_data": {...}
+          }
+        
+  quick_analysis:
+    description: "快速分析单个数据源 - 对任意数据进行快速AI分析"
+    parameters:
+      data:
+        type: "any"
+        description: "输入数据，可以是任意格式"
+        required: true
+        example: |
+          {
+            "price": 150.25,
+            "trend": "上涨",
+            "volatility": "中等"
+          }
+      analysis_type:
+        type: "string"
+        description: "分析类型"
+        default: "general"
+        options: ["general", "technical", "fundamental", "sentiment", "risk"]
+        
+  health_check:
+    description: "健康检查 - 验证服务状态和AI功能可用性，检查API配置状态"
+
+# 元数据
+metadata:
+  category: "analysis"
+  tags: ["forex", "comprehensive-analysis", "ai", "trading", "decision-support", "multi-source", "react-reasoning", "autonomous-agent", "data-integration", "trading-strategy", "executable-advice"]
+  author: "Forex Trading Agent"
+  dependencies: ["openai", "numpy"]
+  features: [
+    "多数据源智能整合",
+    "AI驱动的深度分析", 
+    "易读文本输出格式",
+    "自适应数据格式处理",
+    "实时市场分析",
+    "风险管理建议",
+    "具体交易决策支持",
+    "ReAct推理链支持",
+    "自主调查规划",
+    "动态数据收集决策",
+    "智能货币对识别",
+    "数据可用性自适应",
+    "深度交易建议生成",
+    "具体执行策略制定",
+    "仓位管理建议",
+    "风险回报比评估"
+  ]
+  supported_data_sources: [
+    "data_fetcher - 市场数据（实时/历史/日内）",
+    "economic_calendar - 经济数据（单货币对/多货币对）", 
+    "technical_analyzer - 技术数据（指标/信号）"
+  ]
+  data_processing_features: |
+    智能数据提取和适配能力:
+    - 市场数据: 适配data_fetcher的实时数据(字典)和历史数据(列表)格式
+    - 经济数据: 支持economic_calendar的单货币对和多货币对复杂格式
+    - 技术数据: 自动识别technical_analyzer的技术指标和交易信号两种输出格式
+    - 数据可用性检查: 自动评估各数据源可用性并动态调整分析策略
+    
+    货币对识别能力:
+    - 从问题中自动提取目标货币对(EUR/USD, GBP/JPY等)
+    - 支持货币对格式标准化处理
+    - 多货币对分析支持
+    
+    动态分析重点:
+    - 根据实际数据可用性智能调整分析重点
+    - 缺失数据透明说明和限制提示
+    - 基于数据内容的差异化分析策略
+  react_capabilities: |
+    ReAct推理链工作流程:
+    1. analyze_user_query - 智能查询分析，识别货币对和需求
+    2. react_reasoning - 初始推理，制定调查计划
+    3. 根据计划调用相应工具收集数据
+    4. evaluate_evidence - 中期评估证据完整性，决定下一步
+    5. 根据需要收集额外数据
+    6. generate_comprehensive_analysis - 生成综合分析和交易建议
+    7. react_final_analysis - 最终综合分析，基于完整证据链
+    
+    支持的问题类型:
+    - "分析EUR/USD今天的技术走势和交易机会" (交易机会识别)
+    - "为什么今天USD/JPY大涨？" (原因分析)
+    - "预测GBP/JPY明天的走势" (走势预测)
+    - "什么因素影响了黄金价格？" (多因素分析)
+    - "USD/JPY突破150.00的关键驱动因素是什么？" (关键技术位分析)
+  output_structure: |
+    查询分析输出:
+    {
+      "success": boolean,
+      "query_analysis": {
+        "identified_currency_pairs": ["货币对1", "货币对2"],
+        "primary_currency_pair": "主要货币对",
+        "query_type": "趋势分析/技术分析/基本面分析/风险评估/交易机会等",
+        "user_concerns": ["用户关注点1", "用户关注点2"],
+        "analysis_focus": ["分析重点1", "分析重点2"],
+        "required_data": ["市场数据", "经济数据", "技术指标", "新闻情绪等"],
+        "analysis_suggestions": ["建议1", "建议2"],
+        "complexity_level": "简单/中等/复杂"
+      },
+      "original_query": string,
+      "timestamp": string
+    }
+    
+    综合分析输出 (易读文本格式):
+    ## AI 深度分析
+    ───────
+    
+    ### 1. 综合市场评估
+    [基于所有可用数据的整体市场判断]
+    
+    ### 2. 关键技术信号分析  
+    [详细的技术指标解读和信号一致性]
+    
+    ### 3. 基本面驱动因素
+    [经济事件和情绪面对价格的影响]
+    
+    ### 4. 交易策略建议
+    #### 4.1 主要交易机会
+    - **方向偏好**: 明确看多/看空/中性
+    - **置信水平**: 基于数据支持的程度
+    - **核心逻辑**: 交易的主要依据
+    
+    #### 4.2 具体交易设置
+    - **入场区域**: 具体价格区间
+    - **止损位置**: 明确止损价位
+    - **目标价位**: 分批目标位置
+    - **仓位建议**: 风险调整后的仓位大小
+    - **风险回报比**: 具体的风险回报评估
+    
+    #### 4.3 替代方案
+    - 如果主要设置未触发时的备选计划
+    
+    ### 5. 风险与监控
+    [关键风险因素和需要监控的事件]
+    
+    元数据:
+    {
+      "success": true,
+      "analysis": "上面的大段分析文本",
+      "query_analysis": {...},
+      "data_context": {
+        "has_market_data": boolean,
+        "has_economic_data": boolean,
+        "has_technical_data": boolean,
+        "market_data_type": "real_time/historical",
+        "economic_data_type": "single_currency/multi_currency", 
+        "technical_data_type": "indicators/signals"
+      },
+      "metadata": {
+        "model_used": string,
+        "user_query": string,
+        "data_sources_used": ["market", "economic", "technical"],
+        "analysis_timestamp": string,
+        "output_format": "readable_text"
+      }
+    }
+    
+    ReAct推理输出:
+    {
+      "success": boolean,
+      "reasoning_plan": {
+        "reasoning": "思考过程描述",
+        "target_currency_pair": "识别出的目标货币对，如EUR/USD或N/A",
+        "need_economic_data": boolean,
+        "need_technical_analysis": boolean,
+        "need_market_data": boolean,
+        "need_news_analysis": boolean,
+        "investigation_steps": ["步骤1", "步骤2", "步骤3"],
+        "key_factors": ["因素1", "因素2"],
+        "expected_data_sources": ["source1", "source2"]
+      },
+      "query": string,
+      "timestamp": string
+    }
+    
+    证据评估输出:
+    {
+      "success": boolean,
+      "evaluation": {
+        "reasoning": "评估思考过程",
+        "evidence_sufficient": boolean,
+        "need_more_data": boolean,
+        "missing_information": ["信息1", "信息2"],
+        "key_insights": ["发现1", "发现2"],
+        "next_steps": ["下一步1", "下一步2"],
+        "confidence_level": "高/中/低"
+      },
+      "question": string,
+      "timestamp": string
+    }
+    
+    最终分析输出:
+    {
+      "success": boolean,
+      "final_analysis": {
+        "reasoning_process_summary": "推理过程总结",
+        "key_findings": ["发现1", "发现2"],
+        "primary_causes": ["原因1", "原因2"],
+        "supporting_evidence": {
+          "evidence1": "数据支持1",
+          "evidence2": "数据支持2"
+        },
+        "confidence_level": "高/中/低",
+        "final_conclusion": "最终结论",
+        "recommendations": ["建议1", "建议2"],
+        "limitations": ["限制1", "限制2"]
+      },
+      "reasoning_steps_used": integer,
+      "data_sources_used": ["source1", "source2"],
+      "timestamp": string
+    }
+    
+    快速分析输出:
+    {
+      "success": boolean,
+      "analysis": string,
+      "type": string
+    }
+    
+    健康检查输出:
+    {
+      "status": "healthy/degraded",
+      "service": "analyzer",
+      "ai_capabilities": "available/unavailable",
+      "default_model": string,
+      "timestamp": string
+    }
+  error_structure: |
+    {
+      "success": false,
+      "error": "错误描述",
+      "analysis": null,
+      "query_analysis": null,
+      "reasoning_plan": null,
+      "evaluation": null,
+      "final_analysis": null
+    }
+  usage_examples: |
+    智能查询分析:
+    - analyze_user_query("分析EUR/USD今天的技术走势和交易机会")
+    - analyze_user_query("为什么今天USD/JPY大涨？")
+    
+    综合外汇分析:
+    - generate_comprehensive_analysis(market_data, economic_data, technical_data, "分析USD/JPY走势")
+    - generate_comprehensive_analysis(market_data, economic_data, technical_data, user_query, query_analysis)
+    
+    ReAct推理链分析:
+    - react_reasoning("为什么今天USD/JPY大涨？")
+    - evaluate_evidence("为什么今天USD/JPY大涨？", reasoning_plan, collected_data)
+    - react_final_analysis("为什么今天USD/JPY大涨？", reasoning_steps, all_data)
+    
+    快速分析:
+    - quick_analysis(price_data, "technical")
+    - quick_analysis(news_data, "sentiment")
+    - quick_analysis(economic_events, "fundamental")
+    
+    系统检查:
+    - health_check()
+  version_notes: |
+    v1.3.0 更新:
+    - 新增analyze_user_query方法，智能分析用户查询和识别货币对
+    - 新增generate_comprehensive_analysis方法，生成易读的综合分析报告
+    - 增强交易建议功能，提供具体可执行的交易策略
+    - 改进输出格式为易读文本，包含具体价格水平和执行细节
+    - 优化数据感知能力，动态调整分析重点
+    - 添加仓位管理和风险回报比评估
+    
+    v1.2.0 功能:
+    - 增强数据格式适配能力，支持所有工具的实际输出格式
+    - 添加智能货币对识别功能
+    - 改进数据可用性检查和自适应分析
+    - 优化ReAct推理链的完整性和错误处理

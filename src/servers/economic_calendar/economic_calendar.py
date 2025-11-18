@@ -1021,3 +1021,42 @@ class EconomicCalendar:
     def _is_api_limit_reached(self) -> bool:
         """检查API限制"""
         return self.api_call_count >= self.daily_limit
+
+
+    # 在economic_calendar.py中添加以下方法
+
+    def _get_alpha_vantage_client(self):
+        """获取Alpha Vantage客户端"""
+        try:
+            from valuecell.adapters.models.factory import create_model
+            client = create_model(provider="alphavantage")
+            return client
+        except Exception as e:
+            logger.warning(f"无法初始化Alpha Vantage客户端: {e}")
+            return None
+
+    # def _get_twelve_data_client(self):
+    #     """获取Twelve Data客户端"""
+    #     try:
+    #         from valuecell.adapters.models.factory import create_model
+    #         client = create_model(provider="twelvedata")
+    #         return client
+    #     except Exception as e:
+    #         logger.warning(f"无法初始化Twelve Data客户端: {e}")
+    #         return None
+
+    def _get_enhanced_news_with_providers(self, currency_pair: str) -> Dict:
+        """使用数据提供商获取增强的新闻数据"""
+        # 首先尝试Alpha Vantage
+        alpha_client = self._get_alpha_vantage_client()
+        if alpha_client and hasattr(alpha_client, 'get_news_sentiment'):
+            try:
+                tickers = ",".join(self.currency_to_tickers.get(currency_pair, ['EUR', 'USD']))
+                news_data = alpha_client.get_news_sentiment(tickers=tickers)
+                if 'feed' in news_data and news_data['feed']:
+                    return self._process_enhanced_news(news_data['feed'], currency_pair)
+            except Exception as e:
+                logger.warning(f"Alpha Vantage新闻获取失败: {e}")
+        
+        # 回退到原有逻辑
+        return self._get_enhanced_news(currency_pair)

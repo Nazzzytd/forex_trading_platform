@@ -1,0 +1,8 @@
+name: twelvedata
+enabled: true
+api_key: ${TWELVE_DATA_API_KEY}
+base_url: "https://api.twelvedata.com"
+default_model: "market_data"
+parameters:
+  timeout: 30
+  retry_attempts: 3

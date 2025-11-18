@@ -1,0 +1,7 @@
+description: 智能综合分析工具 - 整合市场数据、经济日历和技术分析，生成专业的交易决策报告，支持ReAct推理链和深度交易建议
+log_level: INFO
+name: analyzer_server
+port: 8000
+server_type: analyzer
+timeout: 300
+workers: 1
