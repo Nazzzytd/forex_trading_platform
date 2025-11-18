@@ -2,7 +2,7 @@
 
 ## 项目结构
 - `src/` - 外汇交易代理代码
-- `valuecell_study/` - ValueCell 架构 
+- `valuecell/` - ValueCell 架构 
 - `integration/` - 集成和测试代码
 - `docs/` - 设计文档
 - `configs/` - 配置文件

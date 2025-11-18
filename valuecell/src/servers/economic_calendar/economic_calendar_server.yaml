@@ -1,7 +1,0 @@
-description: 智能经济日历分析工具 - 提供详细的经济事件解释、市场影响分析和交易建议，支持多货币对分析和真实经济数据
-log_level: INFO
-name: economic_calendar_server
-port: 8000
-server_type: economic_calendar
-timeout: 300
-workers: 1
