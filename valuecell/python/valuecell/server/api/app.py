@@ -61,19 +61,17 @@ def create_app() -> FastAPI:
             print("Configuring data adapters...")
             manager = get_adapter_manager()
 
-            # Configure Yahoo Finance (free, no API key required)
-            try:
-                manager.configure_yfinance()
-                print("✓ Yahoo Finance adapter configured")
-            except Exception as e:
-                print(f"✗ Yahoo Finance adapter failed: {e}")
-
-            # Configure AKShare (free, no API key required, optimized)
-            try:
-                manager.configure_akshare()
-                print("✓ AKShare adapter configured (optimized)")
-            except Exception as e:
-                print(f"✗ AKShare adapter failed: {e}")
+            # AlphaVantage and TwelveData adapters are automatically configured
+            # in the AdapterManager.__init__ method
+            available_adapters = manager.get_available_adapters()
+            print(f"✓ Available adapters: {[adapter.value for adapter in available_adapters]}")
+            
+            # Log specific adapter status
+            for adapter in available_adapters:
+                if adapter.value == "alpha_vantage":
+                    print("✓ AlphaVantage adapter configured")
+                elif adapter.value == "twelve_data":
+                    print("✓ TwelveData adapter configured")
 
             print("Data adapters configuration completed")
 

@@ -1,118 +1,21 @@
-"""Planner: create execution plans from user input.
+# 在 plan/planner.py 中创建一个不使用 Agno 的简化版本
+import openai
+import os
+from typing import List, Optional, Dict, Any
+import json
 
-This module implements the ExecutionPlanner which uses an LLM-based
-planning agent to convert a user request into a structured
-`ExecutionPlan` consisting of `Task` objects. The planner supports
-Human-in-the-Loop flows by emitting `UserInputRequest` objects (backed by
-an asyncio.Event) when the planner requires clarification.
-
-The planner is intentionally thin: it delegates reasoning to an AI agent
-and performs JSON parsing/validation of the planner's output.
-"""
-
-import asyncio
-import logging
-from datetime import datetime
-from typing import Callable, List, Optional
-
-from a2a.types import AgentCard
-from agno.agent import Agent
-from agno.db.in_memory import InMemoryDb
-
-import valuecell.utils.model as model_utils_mod
-from valuecell.core.agent.connect import RemoteConnections
-from valuecell.core.task.models import Task, TaskStatus
-from valuecell.core.types import UserInput
-from valuecell.utils import generate_uuid
-from valuecell.utils.env import agent_debug_mode_enabled
-from valuecell.utils.uuid import generate_conversation_id
-
-from .models import ExecutionPlan, PlannerInput, PlannerResponse
-from .prompts import (
-    PLANNER_EXPECTED_OUTPUT,
-    PLANNER_INSTRUCTION,
-)
-
-logger = logging.getLogger(__name__)
-
-
-class UserInputRequest:
+class SimplePlanner:
     """
-    Represents a request for user input during plan creation or execution.
-
-    This class uses asyncio.Event to enable non-blocking waiting for user responses
-    in the Human-in-the-Loop workflow.
+    完全独立于 Agno 的 Planner，直接使用 OpenAI API
     """
-
-    def __init__(self, prompt: str):
-        """Create a new request object for planner-driven user input.
-
-        Args:
-            prompt: Human-readable prompt describing the information needed.
-        """
-        self.prompt = prompt
-        self.response: Optional[str] = None
-        self.event = asyncio.Event()
-
-    async def wait_for_response(self) -> str:
-        """Block until a response is provided and return it.
-
-        This is an awaitable helper designed to be used by planner code that
-        wants to pause execution until the external caller supplies the
-        requested value via `provide_response`.
-        """
-        await self.event.wait()
-        return self.response
-
-    def provide_response(self, response: str):
-        """Supply the user's response and wake any waiter.
-
-        Args:
-            response: The text provided by the user to satisfy the prompt.
-        """
-        self.response = response
-        self.event.set()
-
-
-class ExecutionPlanner:
-    """
-    Creates execution plans by analyzing user input and determining appropriate agent tasks.
-
-    This planner uses AI to understand user requests and break them down into
-    executable tasks that can be handled by specific agents. It supports
-    Human-in-the-Loop interactions when additional clarification is needed.
-    """
-
-    def __init__(
-        self,
-        agent_connections: RemoteConnections,
-    ):
+    
+    def __init__(self, agent_connections: RemoteConnections):
         self.agent_connections = agent_connections
-        # Fetch model via utils module reference so tests can monkeypatch it reliably
-        model = model_utils_mod.get_model_for_agent("super_agent")
-        self.agent = Agent(
-            model=model,
-            tools=[
-                # TODO: enable UserControlFlowTools when stable
-                # UserControlFlowTools(),
-                self.tool_get_agent_description,
-                self.tool_get_enabled_agents,
-            ],
-            debug_mode=agent_debug_mode_enabled(),
-            instructions=[PLANNER_INSTRUCTION],
-            # output format
-            markdown=False,
-            output_schema=PlannerResponse,
-            expected_output=PLANNER_EXPECTED_OUTPUT,
-            use_json_mode=model_utils_mod.model_should_use_json_mode(model),
-            # context
-            db=InMemoryDb(),
-            add_datetime_to_context=True,
-            add_history_to_context=True,
-            num_history_runs=5,
-            read_chat_history=True,
-            enable_session_summaries=True,
+        self.client = openai.OpenAI(
+            base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1'),
+            api_key=os.getenv('OPENAI_API_KEY')
         )
+        self.model = "gpt-4"  # 使用您可用的模型
 
     async def create_plan(
         self,
@@ -121,250 +24,102 @@ class ExecutionPlanner:
         thread_id: str,
     ) -> ExecutionPlan:
         """
-        Create an execution plan from user input.
-
-        This method orchestrates the planning agent run and returns a
-        validated `ExecutionPlan` instance. The optional `user_input_callback`
-        is called whenever the planner requests clarification; the callback
-        should accept a `UserInputRequest` and arrange for the user's answer to
-        be provided (typically by calling `UserInputRequest.provide_response`).
-
-        Args:
-            user_input: The user's request to be planned.
-            user_input_callback: Async callback invoked with
-                `UserInputRequest` instances when clarification is required.
-
-        Returns:
-            ExecutionPlan: A structured plan with tasks for execution.
+        完全独立创建执行计划
         """
         conversation_id = user_input.meta.conversation_id
         plan = ExecutionPlan(
             plan_id=generate_uuid("plan"),
             conversation_id=conversation_id,
             user_id=user_input.meta.user_id,
-            orig_query=user_input.query,  # Store the original query
+            orig_query=user_input.query,
             created_at=datetime.now().isoformat(),
         )
 
-        # Analyze input and create appropriate tasks
-        tasks, guidance_message = await self._analyze_input_and_create_tasks(
-            user_input,
-            conversation_id,
-            user_input_callback,
-            thread_id,
+        # 使用直接 API 调用
+        tasks, guidance_message = await self._direct_planning(
+            user_input, conversation_id
         )
         plan.tasks = tasks
         plan.guidance_message = guidance_message
 
         return plan
 
-    async def _analyze_input_and_create_tasks(
+    async def _direct_planning(
         self,
         user_input: UserInput,
         conversation_id: str,
-        user_input_callback: Callable,
-        thread_id: str,
     ) -> tuple[List[Task], Optional[str]]:
         """
-        Analyze user input and produce a list of `Task` objects.
-
-        The planner delegates reasoning to an LLM agent which must output a
-        JSON document conforming to `PlannerResponse`. If the planner pauses to
-        request user input, the provided `user_input_callback` will be
-        invoked for each requested field.
-
-        Args:
-            user_input: The original user input to analyze.
-            conversation_id: Conversation this planning belongs to.
-            user_input_callback: Async callback used for Human-in-the-Loop.
-
-        Returns:
-            A tuple of (list of Task objects, optional guidance message).
-            If plan is inadequate, returns empty list with guidance message.
+        直接调用 OpenAI API，完全绕过 Agno
         """
-        # Execute planning with the agent
-        run_response = self.agent.run(
-            PlannerInput(
-                target_agent_name=user_input.target_agent_name,
-                query=user_input.query,
-            ),
-            session_id=conversation_id,
-            user_id=user_input.meta.user_id,
-        )
+        try:
+            # 构建提示
+            system_prompt = PLANNER_INSTRUCTION + """
 
-        # Handle user input requests through Human-in-the-Loop workflow
-        while run_response.is_paused:
-            for tool in run_response.tools_requiring_user_input:
-                input_schema = tool.user_input_schema
+你必须输出严格的 JSON 格式，包含以下字段：
+- tasks: 任务数组，每个任务包含 title, query, agent_name
+- adequate: true/false
+- reason: 决策原因
+- guidance_message: 可选的用户指导信息
 
-                for field in input_schema:
-                    # Use callback for async user input
-                    # TODO: prompt options if available
-                    request = UserInputRequest(field.description)
-                    await user_input_callback(request)
-                    user_value = await request.wait_for_response()
-                    field.value = user_value
+只输出 JSON，不要其他内容。
+"""
 
-            # Continue agent execution with updated inputs
-            run_response = self.agent.continue_run(
-                # TODO: rollback to `run_id=run_response.run_id` when bug fixed by Agno
-                run_response=run_response,
-                updated_tools=run_response.tools,
+            user_prompt = f"""
+目标代理: {user_input.target_agent_name}
+用户查询: {user_input.query}
+"""
+
+            # 直接调用 OpenAI API
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1
             )
 
-            if not run_response.is_paused:
-                break
+            # 解析响应
+            content = response.choices[0].message.content
+            plan_data = json.loads(content)
 
-        # Parse planning result and create tasks
-        plan_raw = run_response.content
-        if not isinstance(plan_raw, PlannerResponse):
-            model = self.agent.model
-            model_description = f"{model.id} (via {model.provider})"
-            return (
-                [],
-                (
-                    f"Planner produced a malformed response: `{plan_raw}`. "
-                    f"Please check the capabilities of your model `{model_description}` and try again later."
-                ),
-            )
-        logger.info(f"Planner produced plan: {plan_raw}")
+            # 验证必需字段
+            if not all(key in plan_data for key in ['tasks', 'adequate', 'reason']):
+                raise ValueError("Missing required fields")
 
-        # Check if plan is inadequate or has no tasks
-        if not plan_raw.adequate or not plan_raw.tasks:
-            # Use guidance_message from planner, or fall back to reason
-            guidance_message = plan_raw.guidance_message or plan_raw.reason
-            logger.info(f"Planner needs user guidance: {guidance_message}")
-            return [], guidance_message  # Return empty task list with guidance
+            tasks_data = plan_data.get('tasks', [])
+            adequate = bool(plan_data.get('adequate', False))
+            reason = str(plan_data.get('reason', ''))
+            guidance_message = plan_data.get('guidance_message')
 
-        # Create tasks from planner response
-        tasks = []
-        for t in plan_raw.tasks:
-            tasks.append(
-                self._create_task(
-                    t,
-                    user_input.meta.user_id,
+            logger.info(f"Direct planning result: adequate={adequate}, tasks={len(tasks_data)}")
+
+            # 如果不充分或没有任务
+            if not adequate or not tasks_data:
+                return [], guidance_message or reason
+
+            # 创建任务
+            tasks = []
+            for task_info in tasks_data:
+                task = Task(
                     conversation_id=user_input.meta.conversation_id,
                     thread_id=thread_id,
+                    user_id=user_input.meta.user_id,
+                    agent_name=task_info.get('agent_name', 'unknown'),
+                    status=TaskStatus.PENDING,
+                    title=task_info.get('title', ''),
+                    query=task_info.get('query', ''),
+                    pattern="once",  # 简化
+                    schedule_config=None,
                     handoff_from_super_agent=(not user_input.target_agent_name),
                 )
-            )
+                tasks.append(task)
 
-        return tasks, None  # Return tasks with no guidance message
+            return tasks, None
 
-    def _create_task(
-        self,
-        task_brief,
-        user_id: str,
-        conversation_id: str | None = None,
-        thread_id: str | None = None,
-        handoff_from_super_agent: bool = False,
-    ) -> Task:
-        """
-        Create a new task for the specified agent.
-
-        Args:
-            conversation_id: Conversation this task belongs to
-            user_id: User who requested this task
-            agent_name: Name of the agent to execute the task
-            query: Query/prompt for the agent
-            pattern: Execution pattern (once or recurring)
-            schedule_config: Schedule configuration for recurring tasks
-
-        Returns:
-            Task: Configured task ready for execution.
-        """
-        # task_brief is a _TaskBrief model instance
-
-        # Reuse parent thread_id across subagent handoff.
-        # When handing off from Super Agent, a NEW conversation_id is created for the subagent,
-        # but we PRESERVE the parent thread_id to correlate the entire flow as one interaction.
-        if handoff_from_super_agent:
-            conversation_id = generate_conversation_id()
-            # Do NOT override thread_id here (keep the parent's thread_id per Spec A)
-
-        return Task(
-            conversation_id=conversation_id,
-            thread_id=thread_id,
-            user_id=user_id,
-            agent_name=task_brief.agent_name,
-            status=TaskStatus.PENDING,
-            title=task_brief.title,
-            query=task_brief.query,
-            pattern=task_brief.pattern,
-            schedule_config=task_brief.schedule_config,
-            handoff_from_super_agent=handoff_from_super_agent,
-        )
-
-    def tool_get_agent_description(self, agent_name: str) -> str:
-        """
-        Get the capabilities description of a specified agent by name.
-
-        This function returns capability information for agents that can be used
-        in the planning process to determine if an agent is suitable for a task.
-
-        Args:
-            agent_name: The name of the agent whose capabilities are to be retrieved
-
-        Returns:
-            str: A description of the agent's capabilities and supported operations.
-        """
-        if card := self.agent_connections.get_agent_card(agent_name):
-            if isinstance(card, AgentCard):
-                return agentcard_to_prompt(card)
-            if isinstance(card, dict):
-                return str(card)
-            return agentcard_to_prompt(card)
-
-        return "The requested agent could not be found or is not available."
-
-    def tool_get_enabled_agents(self) -> str:
-        map_agent_name_to_card = self.agent_connections.get_all_agent_cards()
-        parts = []
-        for agent_name, card in map_agent_name_to_card.items():
-            parts.append(f"<{agent_name}>")
-            parts.append(agentcard_to_prompt(card))
-            parts.append((f"</{agent_name}>\n"))
-        return "\n".join(parts)
-
-
-def agentcard_to_prompt(card: AgentCard):
-    """Convert an AgentCard to an LLM-friendly prompt string.
-
-    Args:
-        card: The AgentCard object or JSON structure describing an agent.
-
-    Returns:
-        A formatted string suitable for inclusion in the planner's instructions.
-    """
-
-    # Start with basic agent information
-    prompt = f"# Agent: {card.name}\n\n"
-
-    # Add description
-    prompt += f"**Description:** {card.description}\n\n"
-
-    # Add skills section
-    if card.skills:
-        prompt += "## Available Skills\n\n"
-
-        for i, skill in enumerate(card.skills, 1):
-            prompt += f"### {i}. {skill.name} (`{skill.id}`)\n\n"
-            prompt += f"**Description:** {skill.description}\n\n"
-
-            # Add examples if available
-            if skill.examples:
-                prompt += "**Examples:**\n"
-                for example in skill.examples:
-                    prompt += f"- {example}\n"
-                prompt += "\n"
-
-            # Add tags if available
-            if skill.tags:
-                tags_str = ", ".join([f"`{tag}`" for tag in skill.tags])
-                prompt += f"**Tags:** {tags_str}\n\n"
-
-            # Add separator between skills (except for the last one)
-            if i < len(card.skills):
-                prompt += "---\n\n"
-
-    return prompt.strip()
+        except Exception as e:
+            error_msg = f"Direct planning failed: {str(e)}"
+            logger.error(error_msg)
+            return [], error_msg

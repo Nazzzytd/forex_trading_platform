@@ -20,14 +20,14 @@ enabled: true
 models:
   # Primary model for triage, reasoning, and query enrichment
   primary:
-    model_id: "anthropic/claude-haiku-4.5"
-    provider: "openrouter"  # Must explicitly specify provider (not null)
+    model_id: "gpt-4o"  # 改为兼容 OpenAI 的模型
+    provider: "openai-compatible"  # 改为 openai-compatible
     
-    # Provider-specific model mappings for fallback
-    # Used when primary provider fails and fallback is attempted
-    provider_models:
-      siliconflow: "deepseek-ai/DeepSeek-V3.1-Terminus"  # Similar capability to Claude Haiku
-      google: "gemini-2.5-flash"  # Fast and efficient like Claude Haiku
+    # Model parameters
+    parameters:
+      temperature: 0.2
+      max_tokens: 4096
+      top_p: 0.9
 
 # Environment Variable Overrides
 # Format: ENV_VAR_NAME -> config.path
@@ -66,4 +66,3 @@ advanced:
   add_datetime_to_context: true
   add_history_to_context: true
   read_chat_history: true
-

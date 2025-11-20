@@ -127,36 +127,36 @@ class ConfigManager:
         if auto_detect:
             enabled_providers = self.get_enabled_providers()
             if enabled_providers:
-                # Priority order for auto-selection
-                preferred_order = [
-                    "openrouter",
-                    "siliconflow",
-                    "google",
-                    "openai",
-                    "openai-compatible",
-                    "azure",
-                ]
+                # 优先检查 openai-compatible
+                if "openai-compatible" in enabled_providers:
+                    logger.info(
+                        f"Auto-selected provider: openai-compatible "
+                        f"(API key detected, available providers: {enabled_providers})"
+                    )
+                    return "openai-compatible"
+                
+                # 其次检查 openai
+                elif "openai" in enabled_providers:
+                    logger.info(
+                        f"Auto-selected provider: openai "
+                        f"(API key detected, available providers: {enabled_providers})"
+                    )
+                    return "openai"
 
-                for preferred in preferred_order:
-                    if preferred in enabled_providers:
-                        logger.info(
-                            f"Auto-selected provider: {preferred} "
-                            f"(API key detected, available providers: {enabled_providers})"
-                        )
-                        return preferred
+                # 如果有其他启用的提供商，使用第一个
+                if enabled_providers:
+                    selected = enabled_providers[0]
+                    logger.info(
+                        f"Auto-selected provider: {selected} "
+                        f"(first available, all providers: {enabled_providers})"
+                    )
+                    return selected
 
-                # Fallback to first enabled provider if none in preferred list
-                selected = enabled_providers[0]
-                logger.info(
-                    f"Auto-selected provider: {selected} "
-                    f"(first available, all providers: {enabled_providers})"
-                )
-                return selected
-
-        # 3. Config file default
-        default = self._config.get("models", {}).get("primary_provider", "openrouter")
-        logger.debug(f"Using default provider from config: {default}")
+        # 3. Config file default - 强制使用 openai-compatible
+        default = "openai-compatible"  # 强制默认使用 openai-compatible
+        logger.debug(f"Using default provider: {default}")
         return default
+
 
     @property
     def fallback_providers(self) -> List[str]:
@@ -175,18 +175,19 @@ class ConfigManager:
             logger.debug(f"Using fallback providers from env: {env_fallbacks}")
             return [p.strip() for p in env_fallbacks.split(",")]
 
-        # 2. Auto-load enabled providers (with valid API keys) except primary
+        # 2. 简化：只在 openai-compatible 和 openai 之间切换
         primary = self.primary_provider
         enabled_providers = self.get_enabled_providers()
 
-        # Filter out the primary provider and return others
+        # 过滤掉主提供商
         fallbacks = [p for p in enabled_providers if p != primary]
 
         logger.debug(
-            f"Auto-loaded fallback providers: {fallbacks} "
+            f"Fallback providers: {fallbacks} "
             f"(enabled: {enabled_providers}, primary: {primary})"
         )
         return fallbacks
+
 
     def get_provider_config(
         self, provider_name: Optional[str] = None
@@ -363,16 +364,45 @@ class ConfigManager:
         """
         enabled = []
 
-        for provider_name in self.loader.list_providers():
-            provider_config = self.get_provider_config(provider_name)
+        # 只检查 openai-compatible 和 openai 提供商
+        supported_providers = ["openai-compatible", "openai"]
+        
+        for provider_name in supported_providers:
+            try:
+                provider_config = self.get_provider_config(provider_name)
 
-            if not provider_config or not provider_config.enabled:
-                continue
+                if provider_config and provider_config.enabled:
+                    # 检查 API key
+                    if provider_config.api_key:
+                        enabled.append(provider_name)
+                        logger.info(f"✅ {provider_name} provider enabled and configured")
+                    else:
+                        logger.warning(f"⚠️ {provider_name} provider enabled but API key not set")
+                else:
+                    logger.warning(f"⚠️ {provider_name} provider not enabled in config")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error checking {provider_name} provider: {e}")
 
-            # Check if API key is available (ollama doesn't need one)
-            if provider_name == "ollama" or provider_config.api_key:
-                enabled.append(provider_name)
+        # 注释掉其他提供商的检查
+        # for provider_name in self.loader.list_providers():
+        #     if provider_name in supported_providers:  # 已经处理过
+        #         continue
+        #         
+        #     try:
+        #         provider_config = self.get_provider_config(provider_name)
+        # 
+        #         if not provider_config or not provider_config.enabled:
+        #             continue
+        # 
+        #         # Check if API key is available (ollama doesn't need one)
+        #         if provider_name == "ollama" or provider_config.api_key:
+        #             enabled.append(provider_name)
+        #             
+        #     except Exception as e:
+        #         logger.warning(f"Error checking provider {provider_name}: {e}")
 
+        logger.info(f"Enabled providers: {enabled}")
         return enabled
 
     def validate_provider(self, provider_name: str) -> tuple[bool, Optional[str]]:
@@ -385,6 +415,11 @@ class ConfigManager:
         Returns:
             Tuple of (is_valid, error_message)
         """
+        # 只支持 openai-compatible 和 openai
+        supported_providers = ["openai-compatible", "openai"]
+        if provider_name not in supported_providers:
+            return False, f"Only {supported_providers} are supported. Requested: '{provider_name}'"
+
         provider_config = self.get_provider_config(provider_name)
 
         if not provider_config:
@@ -393,21 +428,14 @@ class ConfigManager:
         if not provider_config.enabled:
             return False, f"Provider '{provider_name}' is disabled in config"
 
-        # Check API key (except for ollama)
-        if provider_name != "ollama" and not provider_config.api_key:
+        # Check API key
+        if not provider_config.api_key:
             # Get the env var name for helpful error message
             provider_data = self.loader.load_provider_config(provider_name)
-            api_key_env = provider_data.get("connection", {}).get("api_key_env")
+            api_key_env = provider_data.get("connection", {}).get("api_key_env", "OPENAI_COMPATIBLE_API_KEY")
             return (
                 False,
                 f"API key not found for '{provider_name}'. Please set {api_key_env} in .env",
-            )
-
-        # Azure needs endpoint too
-        if provider_name == "azure" and not provider_config.base_url:
-            return (
-                False,
-                "Azure endpoint not configured. Please set AZURE_OPENAI_ENDPOINT",
             )
 
         return True, None

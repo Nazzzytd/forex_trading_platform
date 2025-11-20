@@ -10,10 +10,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional
+from .alphavantage_adapter import AlphaVantageAdapter
+from .twelvedata_adapter import TwelveDataAdapter
 
 from valuecell.utils.model import get_model
 
-from .akshare_adapter import AKShareAdapter
 from .base import BaseDataAdapter
 from .types import (
     Asset,
@@ -25,7 +26,10 @@ from .types import (
     Exchange,
     Watchlist,
 )
-from .yfinance_adapter import YFinanceAdapter
+
+# 只导入 AlphaVantage 适配器，注释掉其他适配器
+# from .akshare_adapter import AKShareAdapter
+# from .yfinance_adapter import YFinanceAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,6 @@ class AdapterManager:
         self.adapters: Dict[DataSource, BaseDataAdapter] = {}
 
         # Exchange → Adapters routing table (simplified)
-        # Note: Keys are Exchange.value strings for efficient lookup
         self.exchange_routing: Dict[str, List[BaseDataAdapter]] = {}
 
         # Ticker → Adapter cache for fast lookups
@@ -47,7 +50,35 @@ class AdapterManager:
 
         self.lock = threading.RLock()
 
-        logger.info("Asset adapter manager initialized")
+        # 只配置新的适配器，确保旧适配器不会自动初始化
+        self.configure_alphavantage()
+        self.configure_twelvedata()
+        
+        logger.info("Asset adapter manager initialized (AlphaVantage + TwelveData only)")
+
+    def configure_alphavantage(self, **kwargs) -> None:
+        """Configure and register AlphaVantage adapter.
+        
+        Args:
+            **kwargs: Additional configuration for AlphaVantage
+        """
+        try:
+            from .alphavantage_adapter import AlphaVantageAdapter
+            adapter = AlphaVantageAdapter(**kwargs)
+            self.register_adapter(adapter)
+            logger.info("✅ AlphaVantage adapter configured successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to configure AlphaVantage adapter: {e}")
+
+    def configure_twelvedata(self, **kwargs) -> None:
+        """Configure and register TwelveData adapter."""
+        try:
+            adapter = TwelveDataAdapter(**kwargs)
+            self.register_adapter(adapter)
+            logger.info("✅ TwelveData adapter configured successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to configure TwelveData adapter: {e}")
+
 
     def _rebuild_routing_table(self) -> None:
         """Rebuild routing table based on registered adapters' capabilities.
@@ -97,25 +128,25 @@ class AdapterManager:
             self._rebuild_routing_table()
             logger.info(f"Registered adapter: {adapter.source.value}")
 
-    def configure_yfinance(self, **kwargs) -> None:
-        """Configure and register Yahoo Finance adapter."""
-        try:
-            adapter = YFinanceAdapter(**kwargs)
-            self.register_adapter(adapter)
-        except Exception as e:
-            logger.error(f"Failed to configure Yahoo Finance adapter: {e}")
+    # def configure_yfinance(self, **kwargs) -> None:
+    #     """Configure and register Yahoo Finance adapter."""
+    #     try:
+    #         adapter = YFinanceAdapter(**kwargs)
+    #         self.register_adapter(adapter)
+    #     except Exception as e:
+    #         logger.error(f"Failed to configure Yahoo Finance adapter: {e}")
 
-    def configure_akshare(self, **kwargs) -> None:
-        """Configure and register AKShare adapter.
+    # def configure_akshare(self, **kwargs) -> None:
+    #     """Configure and register AKShare adapter.
 
-        Args:
-            **kwargs: Additional configuration
-        """
-        try:
-            adapter = AKShareAdapter(**kwargs)
-            self.register_adapter(adapter)
-        except Exception as e:
-            logger.error(f"Failed to configure AKShare adapter: {e}")
+    #     Args:
+    #         **kwargs: Additional configuration
+    #     """
+    #     try:
+    #         adapter = AKShareAdapter(**kwargs)
+    #         self.register_adapter(adapter)
+    #     except Exception as e:
+    #         logger.error(f"Failed to configure AKShare adapter: {e}")
 
     def get_available_adapters(self) -> List[DataSource]:
         """Get list of available data adapters."""
@@ -161,7 +192,7 @@ class AdapterManager:
     def get_adapter_for_ticker(self, ticker: str) -> Optional[BaseDataAdapter]:
         """Get the best adapter for a specific ticker (with caching).
 
-        Simplified: Only based on exchange, first adapter that validates wins.
+        Simplified: Only use AlphaVantage for all tickers.
 
         Args:
             ticker: Asset ticker in internal format (e.g., "NASDAQ:AAPL")
@@ -174,30 +205,17 @@ class AdapterManager:
             if ticker in self._ticker_cache:
                 return self._ticker_cache[ticker]
 
-        # Parse ticker
-        if ":" not in ticker:
-            logger.warning(f"Invalid ticker format (missing ':'): {ticker}")
-            return None
-
-        exchange, symbol = ticker.split(":", 1)
-
-        # Get adapters for this exchange
-        adapters = self.get_adapters_for_exchange(exchange)
-
-        if not adapters:
-            logger.debug(f"No adapters registered for exchange: {exchange}")
-            return None
-
-        # Find first adapter that validates this ticker
-        for adapter in adapters:
-            if adapter.validate_ticker(ticker):
+        # 简化逻辑：只返回第一个可用的适配器（AlphaVantage）
+        with self.lock:
+            if self.adapters:
+                adapter = list(self.adapters.values())[0]
                 # Cache the result
                 with self._cache_lock:
                     self._ticker_cache[ticker] = adapter
-                logger.debug(f"Matched adapter {adapter.source.value} for {ticker}")
+                logger.debug(f"Using {adapter.source.value} for {ticker}")
                 return adapter
 
-        logger.warning(f"No suitable adapter found for ticker: {ticker}")
+        logger.warning(f"No adapters available for ticker: {ticker}")
         return None
 
     def _deduplicate_search_results(
@@ -301,186 +319,78 @@ class AdapterManager:
         """
         all_results = []
 
-        # Determine which adapters to use based on asset types
-        target_adapters = set()
-
-        # Use all available adapters
+        # 只使用已注册的适配器（现在只有 AlphaVantage）
         with self.lock:
-            target_adapters.update(self.adapters.values())
+            target_adapters = list(self.adapters.values())
 
-        # Search in parallel across adapters
         if not target_adapters:
+            logger.warning("No asset adapters available for search")
             return []
 
-        with ThreadPoolExecutor(max_workers=len(target_adapters)) as executor:
-            future_to_adapter = {
-                executor.submit(adapter.search_assets, query): adapter
-                for adapter in target_adapters
-            }
+        # 串行搜索，避免并行问题
+        for adapter in target_adapters:
+            try:
+                logger.debug(f"Searching with adapter: {adapter.source.value}")
+                results = adapter.search_assets(query)
+                all_results.extend(results)
+                logger.info(f"Adapter {adapter.source.value} returned {len(results)} results")
+            except Exception as e:
+                logger.warning(f"Search failed for adapter {adapter.source.value}: {e}")
+                continue
 
-            for future in as_completed(future_to_adapter):
-                adapter = future_to_adapter[future]
-                try:
-                    results = future.result(timeout=15)
-                    all_results.extend(results)
-                except Exception as e:
-                    logger.warning(
-                        f"Search failed for adapter {adapter.source.value}: {e}"
-                    )
-
-        # Smart deduplication of results
-        unique_results = self._deduplicate_search_results(all_results)
-
-        # Use fallback search if no results found
-        if len(unique_results) == 0:
-            logger.info(
-                f"No results from adapters, trying fallback search for query: {query.query}"
-            )
+        # 如果没有结果，尝试回退搜索
+        if not all_results:
+            logger.info(f"No results from adapters, trying fallback search for: {query.query}")
             fallback_results = self._fallback_search_assets(query)
-            # Deduplicate fallback results with existing results
-            combined_results = unique_results + fallback_results
-            unique_results = self._deduplicate_search_results(combined_results)
+            all_results.extend(fallback_results)
+
+        # 去重
+        unique_results = self._deduplicate_search_results(all_results)
 
         return unique_results[: query.limit]
 
     def _fallback_search_assets(
         self, query: AssetSearchQuery
     ) -> List[AssetSearchResult]:
-        """Fallback search assets if no results are found using LLM-based ticker generation.
-
-        This method uses the centralized configuration system to create model instances
-        for intelligently generating possible ticker formats based on the user's search query,
-        then validates each generated ticker.
-
+        """Fallback search assets if no results are found.
+        
         Args:
             query: Search query parameters
 
         Returns:
             List of validated search results
         """
-        try:
-            # Use configuration system to create model
-
-            model = get_model("PRODUCT_MODEL_ID")
-
-            # Create prompt to generate possible ticker formats
-            system_prompt = (
-                "You are a financial data expert that helps map search queries to "
-                "standardized ticker formats. Always respond with valid JSON arrays only."
-            )
-
-            user_prompt = f"""Given the user search query: "{query.query}"
-
-Generate a list of possible internal ticker IDs that match this query. The internal ticker format is: EXCHANGE:SYMBOL
-
-Supported exchanges and their formats:
-- NASDAQ: NASDAQ:SYMBOL (e.g., NASDAQ:AAPL, NASDAQ:MSFT)
-- NYSE: NYSE:SYMBOL (e.g., NYSE:JPM, NYSE:BAC)
-- AMEX: AMEX:SYMBOL (e.g., AMEX:GORO, AMEX:GLD)
-- SSE: SSE:SYMBOL (Shanghai Stock Exchange, 6-digit code, e.g., SSE:601398, SSE:510050)
-- SZSE: SZSE:SYMBOL (Shenzhen Stock Exchange, 6-digit code, e.g., SZSE:000001, SZSE:002594, SZSE:300750)
-- BSE: BSE:SYMBOL (Beijing Stock Exchange, 6-digit code, e.g., BSE:835368, BSE:560800)
-- HKEX: HKEX:SYMBOL (Hong Kong Stock Exchange, 5-digit code with leading zeros, e.g., HKEX:00700, HKEX:03033)
-- CRYPTO: CRYPTO:SYMBOL (e.g., CRYPTO:BTC, CRYPTO:ETH)
-
-Consider:
-1. Common stock symbols and company names
-2. Chinese company names (if query contains Chinese characters)
-3. Cryptocurrency names
-4. Index names
-5. ETF names
-
-Return ONLY a JSON array of ticker strings, like:
-["NASDAQ:AAPL", "NYSE:AAPL", "HKEX:00700"]
-
-Generate up to at least 1 possible ticker candidate up to 10. Be creative but realistic."""
-
-            # Use agno Agent for structured communication
-            from agno.agent import Agent
-
-            agent = Agent(
-                model=model,
-                instructions=[system_prompt],
-                markdown=False,
-            )
-
-            # Call LLM API
-            response = agent.run(user_prompt)
-
-            # Parse response
-            response_text = response.content.strip()
-            logger.debug(f"LLM response for query '{query.query}': {response_text}")
-
-            # Extract JSON array from response (handle cases where LLM adds markdown formatting)
-            if response_text.startswith("```json"):
-                response_text = (
-                    response_text.split("```json")[1].split("```")[0].strip()
-                )
-            elif response_text.startswith("```"):
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-
-            possible_tickers = json.loads(response_text)
-
-            if not isinstance(possible_tickers, list):
-                logger.warning(f"LLM response is not a list: {possible_tickers}")
-                return []
-
-            # Validate each ticker and convert to search results
-            results = []
-            seen_tickers = set()
-
-            for ticker in possible_tickers:
-                if not isinstance(ticker, str):
-                    continue
-
-                ticker = ticker.strip().upper()
-
-                # Skip duplicates
-                if ticker in seen_tickers:
-                    continue
-
-                # Validate ticker format
-                if ":" not in ticker:
-                    continue
-
-                if not self.get_adapter_for_ticker(ticker):
-                    continue
-
-                # Try to get asset info
-                try:
-                    asset_info = self.get_asset_info(ticker)
-
-                    if asset_info:
-                        seen_tickers.add(ticker)
-
-                        # Convert Asset to AssetSearchResult
-                        search_result = AssetSearchResult(
-                            ticker=asset_info.ticker,
-                            asset_type=asset_info.asset_type,
-                            names=asset_info.names.names,
-                            exchange=asset_info.market_info.exchange,
-                            country=asset_info.market_info.country,
-                        )
-                        results.append(search_result)
-
-                        logger.info(f"Fallback search found valid asset: {ticker}")
-
-                        # Stop if we have enough results
-                        if len(results) >= query.limit:
-                            break
-
-                except Exception as e:
-                    logger.debug(f"Ticker {ticker} validation failed: {e}")
-                    continue
-
-            logger.info(
-                f"Fallback search returned {len(results)} results for query '{query.query}'"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Fallback search failed: {e}", exc_info=True)
-            return []
+        results = []
+        
+        # 简单的回退逻辑：尝试常见的外汇对
+        common_forex_pairs = [
+            "FX:EURUSD", "FX:GBPUSD", "FX:USDJPY", "FX:USDCHF", 
+            "FX:AUDUSD", "FX:USDCAD", "FX:NZDUSD"
+        ]
+        
+        for ticker in common_forex_pairs:
+            try:
+                asset_info = self.get_asset_info(ticker)
+                if asset_info:
+                    search_result = AssetSearchResult(
+                        ticker=asset_info.ticker,
+                        asset_type=asset_info.asset_type,
+                        names=asset_info.names.names,
+                        exchange=asset_info.market_info.exchange,
+                        country=asset_info.market_info.country,
+                        relevance_score=0.5  # 中等相关性
+                    )
+                    results.append(search_result)
+                    logger.info(f"Fallback found: {ticker}")
+                    
+                    if len(results) >= query.limit:
+                        break
+            except Exception as e:
+                logger.debug(f"Fallback ticker {ticker} failed: {e}")
+                continue
+        
+        logger.info(f"Fallback search returned {len(results)} results")
+        return results
 
     def get_asset_info(self, ticker: str) -> Optional[Asset]:
         """Get detailed asset information with automatic failover.

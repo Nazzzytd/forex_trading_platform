@@ -5,7 +5,7 @@ across multiple data sources with support for internationalization and user
 watchlists.
 
 Key Features:
-- Multi-source data adapters (Yahoo Finance, TuShare, CoinMarketCap, etc.)
+- Multi-source data adapters (AlphaVantage, TwelveData, etc.)
 - Standardized asset representation with ticker format [EXCHANGE]:[SYMBOL]
 - User watchlist management with persistent storage
 - Internationalization support for asset names and UI text
@@ -29,7 +29,9 @@ Usage Example:
     ```
 """
 
-from .akshare_adapter import AKShareAdapter
+# New adapter implementations
+from .alphavantage_adapter import AlphaVantageAdapter
+from .twelvedata_adapter import TwelveDataAdapter
 
 # Base adapter classes
 from .base import (
@@ -69,9 +71,6 @@ from .types import (
     WatchlistItem,
 )
 
-# Specific adapter implementations
-from .yfinance_adapter import YFinanceAdapter
-
 # Note: High-level asset service functions have been moved to valuecell.services.assets
 # Import from there for asset search, price retrieval, and watchlist operations
 
@@ -95,8 +94,8 @@ __all__ = [
     "BaseDataAdapter",
     "AdapterCapability",
     # Adapters
-    "YFinanceAdapter",
-    "AKShareAdapter",
+    "AlphaVantageAdapter",
+    "TwelveDataAdapter",
     # Managers
     "AdapterManager",
     "WatchlistManager",

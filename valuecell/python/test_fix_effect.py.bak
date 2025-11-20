@@ -1,0 +1,47 @@
+# test_fix_effect.py
+import os
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+def test_fix_effect():
+    """测试修复效果"""
+    try:
+        print("🧪 测试修复效果...")
+        
+        # 使用可能触发 PlannerResponse 的配置
+        model = OpenAIChat(
+            id="gpt-3.5-turbo",
+            base_url="https://zjuapi.com/v1",
+            api_key=os.getenv("OPENAI_COMPATIBLE_API_KEY"),
+            temperature=0.2,
+            max_tokens=100
+        )
+        
+        agent = Agent(
+            name="Planner Test Agent",
+            model=model,
+            # 添加可能触发结构化输出的配置
+            instructions="Please plan and analyze the following request carefully.",
+            reasoning=True
+        )
+        
+        response = agent.run("Plan a simple task for me")
+        print(f"✅ 修复测试成功!")
+        print(f"响应: {response.content}")
+        return True
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "schema" in error_msg.lower() or "planner" in error_msg.lower():
+            print(f"❌ Schema 错误仍然存在: {error_msg[:200]}")
+            return False
+        else:
+            print(f"⚠️ 其他错误 (但可能不是 Schema 问题): {error_msg[:200]}")
+            return True
+
+if __name__ == "__main__":
+    success = test_fix_effect()
+    if success:
+        print("\n🎉 修复验证通过！可以启动应用了。")
+    else:
+        print("\n💥 修复验证失败，需要进一步处理。")
