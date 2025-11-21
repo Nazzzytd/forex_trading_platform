@@ -33,7 +33,7 @@ class PlannerInput(BaseModel):
     query: str = Field(..., description="User query")
 
 
-# 完全重命名 PlannerResponse 以避免任何缓存
+# 完全重命名 PlannerResponse 以避免任何缓存问题
 class PlanResponseModel(BaseModel):
     """COMPLETELY NEW response model to avoid all caching issues"""
     tasks: List[_TaskBrief] = Field(..., description="List of tasks to be executed")
@@ -45,4 +45,5 @@ class PlanResponseModel(BaseModel):
         extra = "forbid"
 
 
-# 不创建任何别名！完全使用新名称
+# 完全移除 PlannerResponse - 不提供任何替代或别名
+# 让任何尝试使用 PlannerResponse 的地方直接失败

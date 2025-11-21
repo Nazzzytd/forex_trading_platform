@@ -1,6 +1,9 @@
 #!/bin/bash
 set -Eeuo pipefail
 
+echo "修改 start.sh，在 python 命令前添加："
+echo "python /Users/fr./answer/forex_trading_platform/valuecell/python/agno_patch.py"
+
 # Simple project launcher with auto-install for bun and uv
 # - macOS: use Homebrew to install missing tools
 # - other OS: print guidance
@@ -101,9 +104,10 @@ start_backend() {
     warn "Backend directory not found; skipping backend start"
     return 0
   fi
-  info "Starting backend (uv run scripts/launch.py)..."
+  info "Starting backend..."
   cd "$PY_DIR" && uv run --with questionary scripts/launch.py
 }
+
 
 start_frontend() {
   if [[ ! -d "$FRONTEND_DIR" ]]; then

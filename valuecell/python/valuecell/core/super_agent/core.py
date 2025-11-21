@@ -53,7 +53,7 @@ class SuperAgent:
             instructions=[SUPER_AGENT_INSTRUCTION],
             # output format
             expected_output=SUPER_AGENT_EXPECTED_OUTPUT,
-            output_schema=SuperAgentOutcome,
+            # output_schema=SuperAgentOutcome,
             use_json_mode=model_utils_mod.model_should_use_json_mode(model),
             # context
             db=InMemoryDb(),
